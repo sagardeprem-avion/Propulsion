@@ -1,0 +1,116 @@
+clear all
+clc
+
+T04=857+273                 % Turbine inlet temperature
+m=48                         % inlet mass rate
+T06A=927+273                % max afterburner temperature
+afterburner=1 ;              % 0 if afterburner not used, 1 if used
+T_inf=220                   % ambient temperature
+P_inf=0.25*101325           % ambient pressure
+M_inf=0.85                  % flight mach number
+gamma=1.4    ;               % ratio of specific heats
+R=287  ;                     % gas constant
+u=M_inf*sqrt(gamma*R*T_inf)     %  inlet velocity
+
+Cp=gamma*R/(gamma-1) ;              % specific heat  
+prc=linspace(7.2, 7.2,1)            %  compressor pressure ratio
+ 
+% isentropic efficiencies
+e_diff=0.97 ;                   % inlet/diffuser    
+e_n_hot=0.98;                   % hot stream nozzle
+e_comp=0.835;                   % compressor
+e_turb=0.865;                   % turbine
+e_burner=0.95;                  % burner/combustor
+e_ab=0.5;                       % afterburner
+del_p1=0.0;                     % burner pressure loss in %
+del_p2=0;                      % afterburner pressure loss in %
+Q=45000000 ;                    % fuel heat content
+
+ 
+prc_critical= 1/(1-(gamma-1)/(e_n_hot*(gamma+1)))^(gamma/(gamma-1))   % to check if nozzle chokes or not
+
+% diffuser stage
+T02=T_inf*(1+(gamma-1)*0.5*M_inf^2)    
+P02=P_inf*(1+(T02/T_inf-1)*e_diff)^(gamma/(gamma-1)) 
+
+  
+    
+for i=1:length(prc)
+    %  compressor stage
+    P03(i)=(P02*prc(i)) 
+    T03(i)=T02*(1+(prc(i)^((gamma-1)/gamma)-1)/e_comp) 
+    
+    % burner fuel air ratio
+    f(i)=(T04-T03(i))/(e_burner*Q/(Cp)-T04) 
+    
+    % turbine inlet pressure
+    P04(i)=(P03(i))*(1-del_p1)  % # given pressure loss is zero
+    
+        
+    %  compressor turbine power balance
+    T05(i)=T04-(T03(i)-T02)/0.99 %-B*(T08-T02);
+    P05(i)=(P04(i)*(1-(1-T05(i)/T04)/e_turb)^(gamma/(gamma-1))) 
+    T06(i)=(T05(i)) 
+    P06(i)=(P05(i)) 
+    
+    if afterburner==0                                      % if the afterburner is disabled
+        if P_inf/P06(i) > 1/prc_critical                    % loops if nozzle doesn't choke
+        v7(i)=(sqrt(2*e_n_hot*Cp*T06(i)*(1-(P_inf/P06(i))^((gamma-1)/gamma))))   % exit velocity, complete expansion to P_inf
+           t(i)=(1+f(i))*v7(i)-u                           % unchoked thrust without afterburner
+           s=(f(i))/t(i)                 % TSFC
+           sprintf('no afterburner, nozzle does not choke ')
+        else                                           % runs if nozzle chokes
+        
+        T7(i)=2*T05(i)/(gamma+1)                % critical temperature
+        v7(i)=(gamma*R*T7(i))^0.5               % exit choked velocity
+        p7(i)=P06(i)/prc_critical               % critical pressure
+        rho7(i)=P06(i)/(R*T7(i))                % critical density at exit
+        t(i)=(1+f(i))*v7(i)-u + (p7(i)-P_inf)/(rho7(i)*v7(i))   % choked thrust without afterburner
+         
+       s=(f(i))/t(i)    %TSFC
+       sprintf('no afterburner, nozzle chokes, nozzle diameter -')
+       d=2*sqrt(m/(rho7(i)*v7(i)*3.14))
+        end
+        
+        
+    else 
+          
+        P_06(i)=P05(i)*(1-del_p2)        % loss in afterburner
+        f_ab(i)=((1+f(i))*(T06A-T05(i)))/(e_ab*Q/Cp-T06A)    % fuel fraction in afterburner
+        
+        if P_inf/P06(i) >1/prc_critical                  % nozzle unchoked with afterburner
+            
+            v7(i)=(sqrt(2*e_n_hot*Cp*T06A*(1-(P_inf/P06(i))^((gamma-1)/gamma))))   % exit velocity, complete expansion to atmosphere
+            t(i)=(1+f(i)+f_ab(i))*v7(i)-u                  % unchoked thrust with afterburner
+            s=(f(i)+f_ab(i))/t(i)         %TSFC
+            sprintf(' afterburner on, nozzle does not choke ')
+            
+        else                                      % nozzle choked with afterburner
+        
+        T7(i)=2*T06A/(gamma+1)                  % critical temperature
+        p7(i)=P06(i)/prc_critical               % critical pressure
+        v7(i)=(gamma*R*T7(i))^0.5               % critical choked velocity at exit
+        rho7(i)=p7(i)/(R*T7(i))                 % critical denstiy
+     
+        t(i)=(1+f(i)+f_ab(i))*v7(i)-u + (p7(i)-P_inf)/(rho7(i)*v7(i))    % choked thrust with afterburner 
+        s=(f(i)+f_ab(i))/t(i)               % TSFC
+         sprintf(' afterburner on, nozzle chokes ')
+          d=2*sqrt(m/(rho7(i)*v7(i)*3.14))
+        end
+        
+    end
+    e_prop(i)=2*t(i)*u/(t(i)*u*2+(1+f(i))*(v7(i)-u)^2)   % propulsive efficiency
+    e_therm(i)=(t(i)*u*2+(1+f(i))*(v7(i)-u)^2)/(2*f(i)*Q) %thermal efficiency
+  
+end
+ 
+e_overall=e_prop.*e_therm  
+%hold on
+thrust=t*m 
+ %   plot(prc,t)
+ %   plot(prc,e_prop,'o')
+ %   plot(prc,e_therm,'*' ) 
+ %   plot(prc,e_prop.*e_therm,'+' )
+ %   title('T_{04}=1630 K & B=0')
+ %   xlabel('  Compressor pressure ratio \pi_C')
+ %   ylabel('\eta')
